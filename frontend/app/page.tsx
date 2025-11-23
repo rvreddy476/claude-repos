@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { LoginForm } from '@/components/LoginForm';
+import { RegisterForm } from '@/components/RegisterForm';
 import { ChatRoomList } from '@/components/ChatRoomList';
 import { ChatWindow } from '@/components/ChatWindow';
 import { UserList } from '@/components/UserList';
@@ -16,6 +17,7 @@ export default function Home() {
   const [selectedRoomId, setSelectedRoomId] = useState<string | undefined>();
   const [messages, setMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
+  const [showRegister, setShowRegister] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
@@ -89,24 +91,41 @@ export default function Home() {
     }
   };
 
-  const handleLogin = async (username: string, displayName: string) => {
+  const handleLogin = async (username: string) => {
     try {
-      // Check if user already exists
-      let user = await api.getUserByUsername(username);
+      // Check if user exists
+      const user = await api.getUserByUsername(username);
 
       if (!user) {
-        // User doesn't exist, create new user
-        console.log('Creating new user:', { username, displayName });
-        user = await api.createUser({ username, displayName });
-        console.log('User created successfully:', user);
-      } else {
-        console.log('User already exists:', user);
+        throw new Error('User not found. Please sign up first.');
       }
 
+      console.log('User logged in:', user);
       setCurrentUser(user);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error logging in:', error);
-      alert('Failed to login. Please try again.');
+      throw error;
+    }
+  };
+
+  const handleRegister = async (username: string, displayName: string) => {
+    try {
+      // Check if username already exists
+      const existingUser = await api.getUserByUsername(username);
+
+      if (existingUser) {
+        throw new Error('Username already taken. Please choose another.');
+      }
+
+      // Create new user
+      console.log('Creating new user:', { username, displayName });
+      const user = await api.createUser({ username, displayName });
+      console.log('User created successfully:', user);
+
+      setCurrentUser(user);
+    } catch (error: any) {
+      console.error('Error registering:', error);
+      throw error;
     }
   };
 
@@ -148,7 +167,20 @@ export default function Home() {
   };
 
   if (!currentUser) {
-    return <LoginForm onLogin={handleLogin} />;
+    if (showRegister) {
+      return (
+        <RegisterForm
+          onRegister={handleRegister}
+          onSwitchToLogin={() => setShowRegister(false)}
+        />
+      );
+    }
+    return (
+      <LoginForm
+        onLogin={handleLogin}
+        onSwitchToRegister={() => setShowRegister(true)}
+      />
+    );
   }
 
   const selectedRoom = chatRooms.find((r) => r.id === selectedRoomId);

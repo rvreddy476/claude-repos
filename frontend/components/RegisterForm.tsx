@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { MessageSquare } from 'lucide-react';
 
-interface LoginFormProps {
-  onLogin: (username: string) => void;
-  onSwitchToRegister: () => void;
+interface RegisterFormProps {
+  onRegister: (username: string, displayName: string) => void;
+  onSwitchToLogin: () => void;
 }
 
-export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSwitchToRegister }) => {
+export const RegisterForm: React.FC<RegisterFormProps> = ({ onRegister, onSwitchToLogin }) => {
   const [username, setUsername] = useState('');
+  const [displayName, setDisplayName] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -15,13 +16,13 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSwitchToRegiste
     e.preventDefault();
     setError('');
 
-    if (username.trim()) {
+    if (username.trim() && displayName.trim()) {
       setIsLoading(true);
       try {
-        await onLogin(username.trim());
+        await onRegister(username.trim(), displayName.trim());
       } catch (error: any) {
-        console.error('Login error:', error);
-        setError(error.message || 'Failed to login. Please check your username.');
+        console.error('Registration error:', error);
+        setError(error.message || 'Failed to register. Please try again.');
       } finally {
         setIsLoading(false);
       }
@@ -33,7 +34,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSwitchToRegiste
       <div className="bg-white p-8 rounded-2xl shadow-2xl w-full max-w-md">
         <div className="flex items-center justify-center mb-8">
           <MessageSquare size={48} className="text-primary-500 mr-3" />
-          <h1 className="text-3xl font-bold text-gray-900">Welcome Back</h1>
+          <h1 className="text-3xl font-bold text-gray-900">Create Account</h1>
         </div>
 
         {error && (
@@ -52,10 +53,28 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSwitchToRegiste
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="Enter your username"
+              placeholder="Choose a unique username"
+              className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
+              required
+              minLength={3}
+            />
+            <p className="mt-1 text-xs text-gray-500">At least 3 characters</p>
+          </div>
+
+          <div>
+            <label htmlFor="displayName" className="block text-sm font-medium text-gray-700 mb-2">
+              Display Name
+            </label>
+            <input
+              id="displayName"
+              type="text"
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+              placeholder="Your display name"
               className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent"
               required
             />
+            <p className="mt-1 text-xs text-gray-500">This is how others will see you</p>
           </div>
 
           <button
@@ -63,18 +82,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin, onSwitchToRegiste
             disabled={isLoading}
             className="w-full bg-primary-500 text-white py-3 rounded-lg font-semibold hover:bg-primary-600 transition-colors shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            {isLoading ? 'Signing In...' : 'Sign In'}
+            {isLoading ? 'Creating Account...' : 'Sign Up'}
           </button>
         </form>
 
         <div className="mt-6 text-center">
           <p className="text-sm text-gray-600">
-            Don't have an account?{' '}
+            Already have an account?{' '}
             <button
-              onClick={onSwitchToRegister}
+              onClick={onSwitchToLogin}
               className="text-primary-500 hover:text-primary-600 font-semibold"
             >
-              Sign Up
+              Sign In
             </button>
           </p>
         </div>
