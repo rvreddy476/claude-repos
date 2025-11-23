@@ -91,15 +91,22 @@ export default function Home() {
 
   const handleLogin = async (username: string, displayName: string) => {
     try {
-      let user = await api.getUserByUsername(username).catch(() => null);
+      // Check if user already exists
+      let user = await api.getUserByUsername(username);
 
       if (!user) {
+        // User doesn't exist, create new user
+        console.log('Creating new user:', { username, displayName });
         user = await api.createUser({ username, displayName });
+        console.log('User created successfully:', user);
+      } else {
+        console.log('User already exists:', user);
       }
 
       setCurrentUser(user);
     } catch (error) {
       console.error('Error logging in:', error);
+      alert('Failed to login. Please try again.');
     }
   };
 

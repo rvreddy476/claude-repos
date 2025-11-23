@@ -11,6 +11,10 @@ export const api = {
 
   async getOnlineUsers(): Promise<User[]> {
     const response = await fetch(`${API_BASE_URL}/users/online`);
+    if (!response.ok) {
+      console.error('Failed to fetch online users');
+      return [];
+    }
     return response.json();
   },
 
@@ -19,8 +23,11 @@ export const api = {
     return response.json();
   },
 
-  async getUserByUsername(username: string): Promise<User> {
+  async getUserByUsername(username: string): Promise<User | null> {
     const response = await fetch(`${API_BASE_URL}/users/username/${username}`);
+    if (!response.ok) {
+      return null;
+    }
     return response.json();
   },
 
@@ -30,12 +37,20 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(user),
     });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create user: ${error}`);
+    }
     return response.json();
   },
 
   // Chat Rooms
   async getChatRooms(): Promise<ChatRoom[]> {
     const response = await fetch(`${API_BASE_URL}/chatrooms`);
+    if (!response.ok) {
+      console.error('Failed to fetch chat rooms');
+      return [];
+    }
     return response.json();
   },
 
