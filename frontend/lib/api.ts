@@ -1,6 +1,6 @@
 import { User, ChatRoom, Message, CreateUserDto, CreateChatRoomDto } from '@/types/chat';
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL = 'https://localhost:8080/api';
 
 export const api = {
   // Users

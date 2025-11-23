@@ -21,7 +21,16 @@ public class UserRepository : IUserRepository
 
     public async Task<User?> GetByUsernameAsync(string username)
     {
-        return await _context.Users.Find(u => u.Username == username).FirstOrDefaultAsync();
+        try
+        {
+            return await _context.Users.Find(u => u.Username == username).FirstOrDefaultAsync();
+        }
+        catch (Exception ex)
+        {
+
+            throw;
+        }
+       
     }
 
     public async Task<IEnumerable<User>> GetAllAsync()
