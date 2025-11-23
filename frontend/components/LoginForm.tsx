@@ -8,11 +8,19 @@ interface LoginFormProps {
 export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
   const [username, setUsername] = useState('');
   const [displayName, setDisplayName] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (username.trim() && displayName.trim()) {
-      onLogin(username.trim(), displayName.trim());
+      setIsLoading(true);
+      try {
+        await onLogin(username.trim(), displayName.trim());
+      } catch (error) {
+        console.error('Login error:', error);
+      } finally {
+        setIsLoading(false);
+      }
     }
   };
 
@@ -57,14 +65,18 @@ export const LoginForm: React.FC<LoginFormProps> = ({ onLogin }) => {
 
           <button
             type="submit"
-            className="w-full bg-primary-500 text-white py-3 rounded-lg font-semibold hover:bg-primary-600 transition-colors shadow-lg"
+            disabled={isLoading}
+            className="w-full bg-primary-500 text-white py-3 rounded-lg font-semibold hover:bg-primary-600 transition-colors shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
           >
-            Join Chat
+            {isLoading ? 'Joining...' : 'Join Chat'}
           </button>
         </form>
 
         <div className="mt-6 text-center text-sm text-gray-600">
           <p>Real-time chat with SignalR & Next.js</p>
+          <p className="mt-2 text-xs text-gray-500">
+            New users will be automatically registered
+          </p>
         </div>
       </div>
     </div>

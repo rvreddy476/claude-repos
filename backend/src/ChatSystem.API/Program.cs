@@ -3,6 +3,7 @@ using ChatSystem.Application.Services;
 using ChatSystem.Domain.Interfaces;
 using ChatSystem.Infrastructure.Caching;
 using ChatSystem.Infrastructure.Configuration;
+using ChatSystem.Infrastructure.Data;
 using ChatSystem.Infrastructure.Persistence;
 using ChatSystem.Infrastructure.Repositories;
 
@@ -33,6 +34,9 @@ builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IChatRoomService, ChatRoomService>();
 builder.Services.AddScoped<IMessageService, MessageService>();
 
+// Register Database Seeder
+builder.Services.AddScoped<DatabaseSeeder>();
+
 // Add SignalR
 builder.Services.AddSignalR();
 
@@ -49,6 +53,13 @@ builder.Services.AddCors(options =>
 });
 
 var app = builder.Build();
+
+// Seed the database
+using (var scope = app.Services.CreateScope())
+{
+    var seeder = scope.ServiceProvider.GetRequiredService<DatabaseSeeder>();
+    await seeder.SeedAsync();
+}
 
 // Configure the HTTP request pipeline
 if (app.Environment.IsDevelopment())
