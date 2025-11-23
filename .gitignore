@@ -1,0 +1,30 @@
+# .NET
+bin/
+obj/
+*.user
+*.suo
+*.userosscache
+.vs/
+.vscode/
+
+# Frontend
+node_modules/
+.next/
+out/
+*.log
+npm-debug.log*
+.env*.local
+
+# Docker
+.docker/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDEs
+*.swp
+*.swo
+*~
+.idea/
+*.iml
