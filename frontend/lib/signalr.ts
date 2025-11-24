@@ -107,6 +107,37 @@ export class ChatHubConnection {
     }
   }
 
+  async sendDirectMessage(recipientUserId: string, content: string): Promise<void> {
+    if (this.connection) {
+      console.log('Sending direct message to:', recipientUserId, 'content:', content);
+      await this.connection.invoke('SendDirectMessage', recipientUserId, content);
+    }
+  }
+
+  onReceiveDirectMessage(callback: (message: any) => void): void {
+    if (this.connection) {
+      this.connection.on('ReceiveDirectMessage', callback);
+    }
+  }
+
+  onDirectMessageSent(callback: (message: any) => void): void {
+    if (this.connection) {
+      this.connection.on('DirectMessageSent', callback);
+    }
+  }
+
+  offReceiveDirectMessage(): void {
+    if (this.connection) {
+      this.connection.off('ReceiveDirectMessage');
+    }
+  }
+
+  offDirectMessageSent(): void {
+    if (this.connection) {
+      this.connection.off('DirectMessageSent');
+    }
+  }
+
   getConnectionState(): signalR.HubConnectionState {
     return this.connection?.state ?? signalR.HubConnectionState.Disconnected;
   }

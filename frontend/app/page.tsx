@@ -6,7 +6,7 @@ import { RegisterForm } from '@/components/RegisterForm';
 import { ChatRoomList } from '@/components/ChatRoomList';
 import { ChatWindow } from '@/components/ChatWindow';
 import { UserList } from '@/components/UserList';
-import { ChatPopup } from '@/components/ChatPopup';
+import { ChatPopup, DirectChatMessage } from '@/components/ChatPopup';
 import { User, ChatRoom, Message } from '@/types/chat';
 import { api } from '@/lib/api';
 import { chatHub } from '@/lib/signalr';
@@ -14,6 +14,7 @@ import { chatHub } from '@/lib/signalr';
 interface OpenChat {
   user: User;
   isMinimized: boolean;
+  messages: DirectChatMessage[];
 }
 
 export default function Home() {
@@ -92,6 +93,62 @@ export default function Home() {
         if (roomId === selectedRoomId) {
           setTypingUsers((prev) => prev.filter((name) => name !== userName));
         }
+      });
+
+      // Handle direct messages
+      chatHub.onReceiveDirectMessage((directMessage: any) => {
+        console.log('Received direct message:', directMessage);
+        const formattedMessage: DirectChatMessage = {
+          id: directMessage.id,
+          senderId: directMessage.senderId,
+          senderName: directMessage.senderName,
+          recipientId: directMessage.recipientId,
+          content: directMessage.content,
+          timestamp: new Date(directMessage.timestamp),
+        };
+
+        setOpenChats((prev) =>
+          prev.map((chat) =>
+            chat.user.id === directMessage.senderId
+              ? { ...chat, messages: [...chat.messages, formattedMessage] }
+              : chat
+          )
+        );
+
+        // Open chat window if not already open
+        setOpenChats((prev) => {
+          const existingChat = prev.find((chat) => chat.user.id === directMessage.senderId);
+          if (!existingChat) {
+            // Fetch user info and open chat
+            api.getUserById(directMessage.senderId).then((user) => {
+              setOpenChats((prevChats) => [
+                ...prevChats,
+                { user, isMinimized: false, messages: [formattedMessage] },
+              ]);
+            });
+          }
+          return prev;
+        });
+      });
+
+      chatHub.onDirectMessageSent((directMessage: any) => {
+        console.log('Direct message sent confirmation:', directMessage);
+        const formattedMessage: DirectChatMessage = {
+          id: directMessage.id,
+          senderId: directMessage.senderId,
+          senderName: directMessage.senderName,
+          recipientId: directMessage.recipientId,
+          content: directMessage.content,
+          timestamp: new Date(directMessage.timestamp),
+        };
+
+        setOpenChats((prev) =>
+          prev.map((chat) =>
+            chat.user.id === directMessage.recipientId
+              ? { ...chat, messages: [...chat.messages, formattedMessage] }
+              : chat
+          )
+        );
       });
     } catch (error) {
       console.error('Error setting up SignalR:', error);
@@ -188,7 +245,16 @@ export default function Home() {
       );
     } else {
       // Open new chat
-      setOpenChats((prev) => [...prev, { user, isMinimized: false }]);
+      setOpenChats((prev) => [...prev, { user, isMinimized: false, messages: [] }]);
+    }
+  };
+
+  const handleSendDirectMessage = async (recipientUserId: string, content: string) => {
+    try {
+      console.log('Main page: Sending direct message to', recipientUserId, ':', content);
+      await chatHub.sendDirectMessage(recipientUserId, content);
+    } catch (error) {
+      console.error('Error sending direct message:', error);
     }
   };
 
@@ -271,8 +337,10 @@ export default function Home() {
           <ChatPopup
             user={chat.user}
             currentUserId={currentUser.id}
+            messages={chat.messages}
             onClose={() => handleCloseChat(chat.user.id)}
             onMinimize={() => handleMinimizeChat(chat.user.id)}
+            onSendMessage={handleSendDirectMessage}
             isMinimized={chat.isMinimized}
           />
         </div>

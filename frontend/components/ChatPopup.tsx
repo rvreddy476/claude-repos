@@ -2,10 +2,11 @@ import React, { useState, useRef, useEffect } from 'react';
 import { User } from '@/types/chat';
 import { X, Minus, Send, UserCircle } from 'lucide-react';
 
-interface DirectChatMessage {
+export interface DirectChatMessage {
   id: string;
   senderId: string;
   senderName: string;
+  recipientId?: string;
   content: string;
   timestamp: Date;
 }
@@ -13,20 +14,23 @@ interface DirectChatMessage {
 interface ChatPopupProps {
   user: User;
   currentUserId: string;
+  messages: DirectChatMessage[];
   onClose: () => void;
   onMinimize: () => void;
+  onSendMessage: (recipientUserId: string, content: string) => void;
   isMinimized: boolean;
 }
 
 export const ChatPopup: React.FC<ChatPopupProps> = ({
   user,
   currentUserId,
+  messages,
   onClose,
   onMinimize,
+  onSendMessage,
   isMinimized,
 }) => {
   const [message, setMessage] = useState('');
-  const [messages, setMessages] = useState<DirectChatMessage[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -37,16 +41,10 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({
     scrollToBottom();
   }, [messages]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (message.trim()) {
-      const newMessage: DirectChatMessage = {
-        id: Date.now().toString(),
-        senderId: currentUserId,
-        senderName: 'You',
-        content: message.trim(),
-        timestamp: new Date(),
-      };
-      setMessages((prev) => [...prev, newMessage]);
+      console.log('ChatPopup: Sending message to', user.id, ':', message.trim());
+      onSendMessage(user.id, message.trim());
       setMessage('');
     }
   };

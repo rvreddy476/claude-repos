@@ -109,4 +109,37 @@ public class ChatHub : Hub
             await Clients.OthersInGroup(roomId).SendAsync("UserStoppedTyping", user.DisplayName, roomId);
         }
     }
+
+    public async Task SendDirectMessage(string recipientUserId, string content)
+    {
+        var senderId = Context.GetHttpContext()?.Request.Query["userId"].ToString();
+
+        if (string.IsNullOrEmpty(senderId))
+            return;
+
+        var sender = await _userService.GetUserByIdAsync(senderId);
+        var recipient = await _userService.GetUserByIdAsync(recipientUserId);
+
+        if (sender == null || recipient == null)
+            return;
+
+        var directMessage = new
+        {
+            Id = Guid.NewGuid().ToString(),
+            SenderId = sender.Id,
+            SenderName = sender.DisplayName,
+            RecipientId = recipientUserId,
+            Content = content,
+            Timestamp = DateTime.UtcNow
+        };
+
+        // Send to recipient if they're online
+        if (!string.IsNullOrEmpty(recipient.ConnectionId))
+        {
+            await Clients.Client(recipient.ConnectionId).SendAsync("ReceiveDirectMessage", directMessage);
+        }
+
+        // Send confirmation back to sender
+        await Clients.Caller.SendAsync("DirectMessageSent", directMessage);
+    }
 }
