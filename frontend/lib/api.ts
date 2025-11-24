@@ -212,4 +212,51 @@ export const api = {
       throw new Error('Failed to delete comment');
     }
   },
+
+  // Media Upload
+  async uploadMedia(file: File, userId: string): Promise<{ url: string; fileName: string; contentType: string; size: number }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_URL}/media/upload?userId=${userId}`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to upload media');
+    }
+
+    return response.json();
+  },
+
+  async uploadMultipleMedia(files: File[], userId: string): Promise<Array<{ url: string; fileName: string; contentType: string; size: number }>> {
+    const formData = new FormData();
+    files.forEach((file) => {
+      formData.append('files', file);
+    });
+
+    const response = await fetch(`${API_URL}/media/upload-multiple?userId=${userId}`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.message || 'Failed to upload media');
+    }
+
+    return response.json();
+  },
+
+  async deleteMedia(fileUrl: string): Promise<void> {
+    const response = await fetch(`${API_URL}/media?fileUrl=${encodeURIComponent(fileUrl)}`, {
+      method: 'DELETE',
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to delete media');
+    }
+  },
 };

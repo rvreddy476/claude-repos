@@ -6,6 +6,7 @@ using ChatSystem.Infrastructure.Configuration;
 using ChatSystem.Infrastructure.Data;
 using ChatSystem.Infrastructure.Persistence;
 using ChatSystem.Infrastructure.Repositories;
+using ChatSystem.Infrastructure.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -23,6 +24,11 @@ builder.Services.AddSingleton<MongoDbContext>();
 builder.Services.Configure<RedisSettings>(
     builder.Configuration.GetSection("RedisSettings"));
 builder.Services.AddSingleton<ICacheService, RedisCacheService>();
+
+// Configure Google Cloud Storage
+builder.Services.Configure<GoogleCloudStorageSettings>(
+    builder.Configuration.GetSection("GoogleCloudStorageSettings"));
+builder.Services.AddSingleton<IMediaStorageService, GoogleCloudStorageService>();
 
 // Register Repositories
 builder.Services.AddScoped<IUserRepository, UserRepository>();
