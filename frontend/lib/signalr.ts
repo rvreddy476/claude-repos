@@ -1,4 +1,5 @@
 import * as signalR from '@microsoft/signalr';
+import { SIGNALR_HUB_URL } from './config';
 
 export class ChatHubConnection {
   private connection: signalR.HubConnection | null = null;
@@ -8,7 +9,7 @@ export class ChatHubConnection {
     this.userId = userId;
 
     this.connection = new signalR.HubConnectionBuilder()
-      .withUrl(`http://localhost:5000/chatHub?userId=${userId}`, {
+      .withUrl(`${SIGNALR_HUB_URL}?userId=${userId}`, {
         skipNegotiation: true,
         transport: signalR.HttpTransportType.WebSockets,
       })

@@ -1,16 +1,17 @@
 import { User, ChatRoom, Message, CreateUserDto, CreateChatRoomDto } from '@/types/chat';
+import { API_BASE_URL } from './config';
 
-const API_BASE_URL = 'https://localhost:8080/api';
+const API_URL = `${API_BASE_URL}/api`;
 
 export const api = {
   // Users
   async getUsers(): Promise<User[]> {
-    const response = await fetch(`${API_BASE_URL}/users`);
+    const response = await fetch(`${API_URL}/users`);
     return response.json();
   },
 
   async getOnlineUsers(): Promise<User[]> {
-    const response = await fetch(`${API_BASE_URL}/users/online`);
+    const response = await fetch(`${API_URL}/users/online`);
     if (!response.ok) {
       console.error('Failed to fetch online users');
       return [];
@@ -19,12 +20,12 @@ export const api = {
   },
 
   async getUserById(id: string): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}/users/${id}`);
+    const response = await fetch(`${API_URL}/users/${id}`);
     return response.json();
   },
 
   async getUserByUsername(username: string): Promise<User | null> {
-    const response = await fetch(`${API_BASE_URL}/users/username/${username}`);
+    const response = await fetch(`${API_URL}/users/username/${username}`);
     if (!response.ok) {
       return null;
     }
@@ -32,7 +33,7 @@ export const api = {
   },
 
   async createUser(user: CreateUserDto): Promise<User> {
-    const response = await fetch(`${API_BASE_URL}/users`, {
+    const response = await fetch(`${API_URL}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(user),
@@ -46,7 +47,7 @@ export const api = {
 
   // Chat Rooms
   async getChatRooms(): Promise<ChatRoom[]> {
-    const response = await fetch(`${API_BASE_URL}/chatrooms`);
+    const response = await fetch(`${API_URL}/chatrooms`);
     if (!response.ok) {
       console.error('Failed to fetch chat rooms');
       return [];
@@ -55,17 +56,17 @@ export const api = {
   },
 
   async getChatRoomById(id: string): Promise<ChatRoom> {
-    const response = await fetch(`${API_BASE_URL}/chatrooms/${id}`);
+    const response = await fetch(`${API_URL}/chatrooms/${id}`);
     return response.json();
   },
 
   async getUserChatRooms(userId: string): Promise<ChatRoom[]> {
-    const response = await fetch(`${API_BASE_URL}/chatrooms/user/${userId}`);
+    const response = await fetch(`${API_URL}/chatrooms/user/${userId}`);
     return response.json();
   },
 
   async createChatRoom(room: CreateChatRoomDto, createdBy: string): Promise<ChatRoom> {
-    const response = await fetch(`${API_BASE_URL}/chatrooms?createdBy=${createdBy}`, {
+    const response = await fetch(`${API_URL}/chatrooms?createdBy=${createdBy}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(room),
@@ -76,13 +77,13 @@ export const api = {
   // Messages
   async getRoomMessages(chatRoomId: string, limit = 50, skip = 0): Promise<Message[]> {
     const response = await fetch(
-      `${API_BASE_URL}/messages/room/${chatRoomId}?limit=${limit}&skip=${skip}`
+      `${API_URL}/messages/room/${chatRoomId}?limit=${limit}&skip=${skip}`
     );
     return response.json();
   },
 
   async getMessageById(id: string): Promise<Message> {
-    const response = await fetch(`${API_BASE_URL}/messages/${id}`);
+    const response = await fetch(`${API_URL}/messages/${id}`);
     return response.json();
   },
 };

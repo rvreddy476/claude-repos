@@ -6,9 +6,15 @@ import { RegisterForm } from '@/components/RegisterForm';
 import { ChatRoomList } from '@/components/ChatRoomList';
 import { ChatWindow } from '@/components/ChatWindow';
 import { UserList } from '@/components/UserList';
+import { ChatPopup } from '@/components/ChatPopup';
 import { User, ChatRoom, Message } from '@/types/chat';
 import { api } from '@/lib/api';
 import { chatHub } from '@/lib/signalr';
+
+interface OpenChat {
+  user: User;
+  isMinimized: boolean;
+}
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
@@ -18,6 +24,7 @@ export default function Home() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [showRegister, setShowRegister] = useState(false);
+  const [openChats, setOpenChats] = useState<OpenChat[]>([]);
 
   useEffect(() => {
     if (currentUser) {
@@ -122,7 +129,9 @@ export default function Home() {
       const user = await api.createUser({ username, displayName });
       console.log('User created successfully:', user);
 
-      setCurrentUser(user);
+      // Redirect to login page after successful registration
+      setShowRegister(false);
+      return user; // Return success
     } catch (error: any) {
       console.error('Error registering:', error);
       throw error;
@@ -164,6 +173,35 @@ export default function Home() {
     if (selectedRoomId) {
       chatHub.sendStoppedTyping(selectedRoomId);
     }
+  };
+
+  const handleUserClick = (user: User) => {
+    // Check if chat is already open
+    const existingChat = openChats.find((chat) => chat.user.id === user.id);
+
+    if (existingChat) {
+      // If minimized, un-minimize it
+      setOpenChats((prev) =>
+        prev.map((chat) =>
+          chat.user.id === user.id ? { ...chat, isMinimized: false } : chat
+        )
+      );
+    } else {
+      // Open new chat
+      setOpenChats((prev) => [...prev, { user, isMinimized: false }]);
+    }
+  };
+
+  const handleCloseChat = (userId: string) => {
+    setOpenChats((prev) => prev.filter((chat) => chat.user.id !== userId));
+  };
+
+  const handleMinimizeChat = (userId: string) => {
+    setOpenChats((prev) =>
+      prev.map((chat) =>
+        chat.user.id === userId ? { ...chat, isMinimized: !chat.isMinimized } : chat
+      )
+    );
   };
 
   if (!currentUser) {
@@ -217,8 +255,28 @@ export default function Home() {
 
       {/* Right Sidebar - Users */}
       <div className="w-80">
-        <UserList users={users} currentUserId={currentUser.id} />
+        <UserList
+          users={users}
+          currentUserId={currentUser.id}
+          onUserClick={handleUserClick}
+        />
       </div>
+
+      {/* Chat Popups */}
+      {openChats.map((chat, index) => (
+        <div
+          key={chat.user.id}
+          style={{ right: `${20 + index * 340}px` }}
+        >
+          <ChatPopup
+            user={chat.user}
+            currentUserId={currentUser.id}
+            onClose={() => handleCloseChat(chat.user.id)}
+            onMinimize={() => handleMinimizeChat(chat.user.id)}
+            isMinimized={chat.isMinimized}
+          />
+        </div>
+      ))}
     </div>
   );
 }
