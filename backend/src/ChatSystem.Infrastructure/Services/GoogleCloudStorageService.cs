@@ -9,6 +9,7 @@ public class GoogleCloudStorageService : IMediaStorageService
 {
     private readonly GoogleCloudStorageSettings _settings;
     private readonly StorageClient _storageClient;
+    private readonly UrlSigner _urlSigner;
 
     public GoogleCloudStorageService(IOptions<GoogleCloudStorageSettings> settings)
     {
@@ -19,58 +20,65 @@ public class GoogleCloudStorageService : IMediaStorageService
         {
             Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", _settings.CredentialsPath);
             _storageClient = StorageClient.Create();
+            _urlSigner = UrlSigner.FromServiceAccountPath(_settings.CredentialsPath);
         }
         else
         {
             // Fall back to default credentials (for environments where credentials are already configured)
             _storageClient = StorageClient.Create();
+            _urlSigner = UrlSigner.FromServiceAccountCredential(Google.Apis.Auth.OAuth2.GoogleCredential.GetApplicationDefault().UnderlyingCredential as Google.Apis.Auth.OAuth2.ServiceAccountCredential);
         }
     }
 
-    public async Task<string> UploadFileAsync(string fileName, string contentType, Stream fileStream, string userId)
+    public async Task<(string presignedUploadUrl, string objectName, string finalCdnUrl)> GeneratePresignedUploadUrlAsync(
+        string fileName,
+        string contentType,
+        string userId,
+        int expirationMinutes = 15)
     {
         try
         {
             // Create a unique file name to avoid collisions
             var fileExtension = Path.GetExtension(fileName);
-            var uniqueFileName = $"{userId}/{DateTime.UtcNow:yyyy/MM/dd}/{Guid.NewGuid()}{fileExtension}";
+            var objectName = $"{userId}/{DateTime.UtcNow:yyyy/MM/dd}/{Guid.NewGuid()}{fileExtension}";
 
-            Console.WriteLine($"📤 Uploading file to GCS: {uniqueFileName}");
+            Console.WriteLine($"🔑 Generating presigned upload URL for: {objectName}");
             Console.WriteLine($"📦 Bucket: {_settings.BucketName}");
             Console.WriteLine($"📄 Content Type: {contentType}");
 
-            // Upload to Google Cloud Storage
-            var uploadedObject = await _storageClient.UploadObjectAsync(
+            // Generate presigned URL for PUT request
+            var presignedUrl = await _urlSigner.SignAsync(
                 bucket: _settings.BucketName,
-                objectName: uniqueFileName,
-                contentType: contentType,
-                source: fileStream,
-                options: new UploadObjectOptions
+                objectName: objectName,
+                duration: TimeSpan.FromMinutes(expirationMinutes),
+                httpMethod: HttpMethod.Put,
+                signingVersion: SigningVersion.V4,
+                contentHeaders: new Dictionary<string, IEnumerable<string>>
                 {
-                    PredefinedAcl = PredefinedObjectAcl.PublicRead // Make file publicly accessible
-                }
-            );
+                    { "Content-Type", new[] { contentType } }
+                });
 
-            Console.WriteLine($"✅ File uploaded successfully: {uploadedObject.Name}");
-
-            // Return CDN URL if configured, otherwise return GCS public URL
+            // Generate the final CDN URL
+            string finalCdnUrl;
             if (!string.IsNullOrEmpty(_settings.MediaCdnUrl))
             {
-                var cdnUrl = $"{_settings.MediaCdnUrl.TrimEnd('/')}/{uniqueFileName}";
-                Console.WriteLine($"🌐 CDN URL: {cdnUrl}");
-                return cdnUrl;
+                finalCdnUrl = $"{_settings.MediaCdnUrl.TrimEnd('/')}/{objectName}";
+                Console.WriteLine($"🌐 Final CDN URL: {finalCdnUrl}");
             }
             else
             {
-                var publicUrl = $"https://storage.googleapis.com/{_settings.BucketName}/{uniqueFileName}";
-                Console.WriteLine($"🌐 Public URL: {publicUrl}");
-                return publicUrl;
+                finalCdnUrl = $"https://storage.googleapis.com/{_settings.BucketName}/{objectName}";
+                Console.WriteLine($"🌐 Final Public URL: {finalCdnUrl}");
             }
+
+            Console.WriteLine($"✅ Presigned upload URL generated successfully");
+
+            return (presignedUrl, objectName, finalCdnUrl);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error uploading file: {ex.Message}");
-            throw new Exception($"Failed to upload file to Google Cloud Storage: {ex.Message}", ex);
+            Console.WriteLine($"❌ Error generating presigned upload URL: {ex.Message}");
+            throw new Exception($"Failed to generate presigned upload URL: {ex.Message}", ex);
         }
     }
 
@@ -105,25 +113,24 @@ public class GoogleCloudStorageService : IMediaStorageService
         }
     }
 
-    public async Task<string> GetSignedUrlAsync(string fileName, int expirationMinutes = 60)
+    public async Task<string> GetSignedDownloadUrlAsync(string fileName, int expirationMinutes = 60)
     {
         try
         {
-          
-            var urlSigner = UrlSigner.FromCredentialFile(_settings.CredentialsPath);
-            var signedUrl = urlSigner.Sign(
+            var signedUrl = await _urlSigner.SignAsync(
                 bucket: _settings.BucketName,
                 objectName: fileName,
-                TimeSpan.FromMinutes(30),
-                 HttpMethod.Put
+                duration: TimeSpan.FromMinutes(expirationMinutes),
+                httpMethod: HttpMethod.Get,
+                signingVersion: SigningVersion.V4
             );
 
             return signedUrl;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error generating signed URL: {ex.Message}");
-            throw new Exception($"Failed to generate signed URL: {ex.Message}", ex);
+            Console.WriteLine($"❌ Error generating signed download URL: {ex.Message}");
+            throw new Exception($"Failed to generate signed download URL: {ex.Message}", ex);
         }
     }
 
@@ -132,7 +139,7 @@ public class GoogleCloudStorageService : IMediaStorageService
         try
         {
             // Handle CDN URLs
-            if (fileUrl.StartsWith(_settings.MediaCdnUrl, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(_settings.MediaCdnUrl) && fileUrl.StartsWith(_settings.MediaCdnUrl, StringComparison.OrdinalIgnoreCase))
             {
                 return fileUrl.Substring(_settings.MediaCdnUrl.Length).TrimStart('/');
             }

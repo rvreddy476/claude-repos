@@ -19,98 +19,102 @@ public class MediaController : ControllerBase
         _mediaStorageService = mediaStorageService;
     }
 
-    [HttpPost("upload")]
-    [RequestSizeLimit(100 * 1024 * 1024)] // 100 MB
-    public async Task<ActionResult<MediaUploadResponseDto>> UploadMedia([FromForm] IFormFile file, [FromQuery] string userId)
+    [HttpPost("presigned-url")]
+    public async Task<ActionResult<PresignedUploadUrlDto>> GetPresignedUploadUrl(
+        [FromQuery] string userId,
+        [FromQuery] string fileName,
+        [FromQuery] string contentType,
+        [FromQuery] long fileSize)
     {
         try
         {
-            // Validate file
-            if (file == null || file.Length == 0)
-            {
-                return BadRequest(new MediaUploadErrorDto("INVALID_FILE", "No file provided"));
-            }
-
-            if (file.Length > MaxFileSize)
-            {
-                return BadRequest(new MediaUploadErrorDto("FILE_TOO_LARGE", $"File size exceeds maximum allowed size of {MaxFileSize / 1024 / 1024} MB"));
-            }
-
-            // Validate content type
-            if (!IsAllowedContentType(file.ContentType))
-            {
-                return BadRequest(new MediaUploadErrorDto("INVALID_FILE_TYPE", $"File type '{file.ContentType}' is not allowed"));
-            }
-
-            // Validate user ID
+            // Validate inputs
             if (string.IsNullOrEmpty(userId))
             {
                 return BadRequest(new MediaUploadErrorDto("INVALID_USER", "User ID is required"));
             }
 
-            Console.WriteLine($"📤 Received file upload request:");
-            Console.WriteLine($"   File Name: {file.FileName}");
-            Console.WriteLine($"   Content Type: {file.ContentType}");
-            Console.WriteLine($"   Size: {file.Length / 1024.0:F2} KB");
-            Console.WriteLine($"   User ID: {userId}");
-
-            // Upload to Google Cloud Storage
-            using (var stream = file.OpenReadStream())
+            if (string.IsNullOrEmpty(fileName))
             {
-                var url = await _mediaStorageService.UploadFileAsync(
-                    fileName: file.FileName,
-                    contentType: file.ContentType,
-                    fileStream: stream,
-                    userId: userId
-                );
-
-                var response = new MediaUploadResponseDto(
-                    Url: url,
-                    FileName: file.FileName,
-                    ContentType: file.ContentType,
-                    Size: file.Length
-                );
-
-                Console.WriteLine($"✅ File uploaded successfully: {url}");
-
-                return Ok(response);
+                return BadRequest(new MediaUploadErrorDto("INVALID_FILE_NAME", "File name is required"));
             }
+
+            if (string.IsNullOrEmpty(contentType))
+            {
+                return BadRequest(new MediaUploadErrorDto("INVALID_CONTENT_TYPE", "Content type is required"));
+            }
+
+            // Validate file size
+            if (fileSize <= 0 || fileSize > MaxFileSize)
+            {
+                return BadRequest(new MediaUploadErrorDto("FILE_TOO_LARGE", $"File size must be between 1 byte and {MaxFileSize / 1024 / 1024} MB"));
+            }
+
+            // Validate content type
+            if (!IsAllowedContentType(contentType))
+            {
+                return BadRequest(new MediaUploadErrorDto("INVALID_FILE_TYPE", $"File type '{contentType}' is not allowed"));
+            }
+
+            Console.WriteLine($"🔑 Generating presigned URL for user: {userId}");
+            Console.WriteLine($"   File Name: {fileName}");
+            Console.WriteLine($"   Content Type: {contentType}");
+            Console.WriteLine($"   Size: {fileSize / 1024.0:F2} KB");
+
+            // Generate presigned URL
+            var (presignedUploadUrl, objectName, finalCdnUrl) = await _mediaStorageService.GeneratePresignedUploadUrlAsync(
+                fileName: fileName,
+                contentType: contentType,
+                userId: userId,
+                expirationMinutes: 15
+            );
+
+            var response = new PresignedUploadUrlDto(
+                PresignedUrl: presignedUploadUrl,
+                ObjectName: objectName,
+                FinalUrl: finalCdnUrl,
+                ExpiresInMinutes: 15
+            );
+
+            Console.WriteLine($"✅ Presigned URL generated successfully");
+
+            return Ok(response);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error uploading media: {ex.Message}");
-            return StatusCode(500, new MediaUploadErrorDto("UPLOAD_FAILED", ex.Message));
+            Console.WriteLine($"❌ Error generating presigned URL: {ex.Message}");
+            return StatusCode(500, new MediaUploadErrorDto("PRESIGNED_URL_GENERATION_FAILED", ex.Message));
         }
     }
 
-    [HttpPost("upload-multiple")]
-    [RequestSizeLimit(500 * 1024 * 1024)] // 500 MB for multiple files
-    public async Task<ActionResult<List<MediaUploadResponseDto>>> UploadMultipleMedia([FromForm] List<IFormFile> files, [FromQuery] string userId)
+    [HttpPost("presigned-urls")]
+    public async Task<ActionResult<List<PresignedUploadUrlDto>>> GetMultiplePresignedUploadUrls(
+        [FromQuery] string userId,
+        [FromBody] List<FileUploadRequest> files)
     {
         try
         {
+            if (string.IsNullOrEmpty(userId))
+            {
+                return BadRequest(new MediaUploadErrorDto("INVALID_USER", "User ID is required"));
+            }
+
             if (files == null || files.Count == 0)
             {
-                return BadRequest(new MediaUploadErrorDto("INVALID_FILES", "No files provided"));
+                return BadRequest(new MediaUploadErrorDto("INVALID_FILES", "At least one file is required"));
             }
 
             if (files.Count > 10)
             {
-                return BadRequest(new MediaUploadErrorDto("TOO_MANY_FILES", "Maximum 10 files allowed per upload"));
+                return BadRequest(new MediaUploadErrorDto("TOO_MANY_FILES", "Maximum 10 files allowed per request"));
             }
 
-            if (string.IsNullOrEmpty(userId))
-            {
-                return BadRequest(new MediaUploadErrorDto("INVALID_USER", "User ID is required"));
-            }
-
-            var responses = new List<MediaUploadResponseDto>();
+            var responses = new List<PresignedUploadUrlDto>();
 
             foreach (var file in files)
             {
-                if (file.Length == 0) continue;
-
-                if (file.Length > MaxFileSize)
+                // Validate each file
+                if (file.FileSize <= 0 || file.FileSize > MaxFileSize)
                 {
                     return BadRequest(new MediaUploadErrorDto("FILE_TOO_LARGE", $"File '{file.FileName}' exceeds maximum size"));
                 }
@@ -120,32 +124,29 @@ public class MediaController : ControllerBase
                     return BadRequest(new MediaUploadErrorDto("INVALID_FILE_TYPE", $"File type '{file.ContentType}' is not allowed for '{file.FileName}'"));
                 }
 
-                using (var stream = file.OpenReadStream())
-                {
-                    var url = await _mediaStorageService.UploadFileAsync(
-                        fileName: file.FileName,
-                        contentType: file.ContentType,
-                        fileStream: stream,
-                        userId: userId
-                    );
+                var (presignedUploadUrl, objectName, finalCdnUrl) = await _mediaStorageService.GeneratePresignedUploadUrlAsync(
+                    fileName: file.FileName,
+                    contentType: file.ContentType,
+                    userId: userId,
+                    expirationMinutes: 15
+                );
 
-                    responses.Add(new MediaUploadResponseDto(
-                        Url: url,
-                        FileName: file.FileName,
-                        ContentType: file.ContentType,
-                        Size: file.Length
-                    ));
-                }
+                responses.Add(new PresignedUploadUrlDto(
+                    PresignedUrl: presignedUploadUrl,
+                    ObjectName: objectName,
+                    FinalUrl: finalCdnUrl,
+                    ExpiresInMinutes: 15
+                ));
             }
 
-            Console.WriteLine($"✅ {responses.Count} files uploaded successfully");
+            Console.WriteLine($"✅ Generated {responses.Count} presigned URLs successfully");
 
             return Ok(responses);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"❌ Error uploading multiple media: {ex.Message}");
-            return StatusCode(500, new MediaUploadErrorDto("UPLOAD_FAILED", ex.Message));
+            Console.WriteLine($"❌ Error generating presigned URLs: {ex.Message}");
+            return StatusCode(500, new MediaUploadErrorDto("PRESIGNED_URL_GENERATION_FAILED", ex.Message));
         }
     }
 
@@ -177,3 +178,5 @@ public class MediaController : ControllerBase
                AllowedAudioTypes.Contains(contentType, StringComparer.OrdinalIgnoreCase);
     }
 }
+
+public record FileUploadRequest(string FileName, string ContentType, long FileSize);

@@ -213,41 +213,99 @@ export const api = {
     }
   },
 
-  // Media Upload
+  // Media Upload with Presigned URLs
   async uploadMedia(file: File, userId: string): Promise<{ url: string; fileName: string; contentType: string; size: number }> {
-    const formData = new FormData();
-    formData.append('file', file);
+    try {
+      // Step 1: Get presigned URL from backend
+      const presignedResponse = await fetch(
+        `${API_URL}/media/presigned-url?userId=${userId}&fileName=${encodeURIComponent(file.name)}&contentType=${encodeURIComponent(file.type)}&fileSize=${file.size}`,
+        { method: 'POST' }
+      );
 
-    const response = await fetch(`${API_URL}/media/upload?userId=${userId}`, {
-      method: 'POST',
-      body: formData,
-    });
+      if (!presignedResponse.ok) {
+        const error = await presignedResponse.json();
+        throw new Error(error.message || 'Failed to get presigned URL');
+      }
 
-    if (!response.ok) {
-      const error = await response.json();
+      const { presignedUrl, finalUrl } = await presignedResponse.json();
+
+      // Step 2: Upload file directly to Google Cloud Storage using presigned URL
+      const uploadResponse = await fetch(presignedUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': file.type,
+        },
+        body: file,
+      });
+
+      if (!uploadResponse.ok) {
+        throw new Error(`Failed to upload file to storage: ${uploadResponse.statusText}`);
+      }
+
+      // Step 3: Return the final CDN URL
+      return {
+        url: finalUrl,
+        fileName: file.name,
+        contentType: file.type,
+        size: file.size,
+      };
+    } catch (error: any) {
+      console.error('Upload error:', error);
       throw new Error(error.message || 'Failed to upload media');
     }
-
-    return response.json();
   },
 
   async uploadMultipleMedia(files: File[], userId: string): Promise<Array<{ url: string; fileName: string; contentType: string; size: number }>> {
-    const formData = new FormData();
-    files.forEach((file) => {
-      formData.append('files', file);
-    });
+    try {
+      // Step 1: Get presigned URLs for all files
+      const fileRequests = files.map(file => ({
+        fileName: file.name,
+        contentType: file.type,
+        fileSize: file.size,
+      }));
 
-    const response = await fetch(`${API_URL}/media/upload-multiple?userId=${userId}`, {
-      method: 'POST',
-      body: formData,
-    });
+      const presignedResponse = await fetch(`${API_URL}/media/presigned-urls?userId=${userId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fileRequests),
+      });
 
-    if (!response.ok) {
-      const error = await response.json();
+      if (!presignedResponse.ok) {
+        const error = await presignedResponse.json();
+        throw new Error(error.message || 'Failed to get presigned URLs');
+      }
+
+      const presignedUrls = await presignedResponse.json();
+
+      // Step 2: Upload all files directly to GCS in parallel
+      const uploadPromises = files.map(async (file, index) => {
+        const { presignedUrl, finalUrl } = presignedUrls[index];
+
+        const uploadResponse = await fetch(presignedUrl, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': file.type,
+          },
+          body: file,
+        });
+
+        if (!uploadResponse.ok) {
+          throw new Error(`Failed to upload ${file.name}: ${uploadResponse.statusText}`);
+        }
+
+        return {
+          url: finalUrl,
+          fileName: file.name,
+          contentType: file.type,
+          size: file.size,
+        };
+      });
+
+      return await Promise.all(uploadPromises);
+    } catch (error: any) {
+      console.error('Batch upload error:', error);
       throw new Error(error.message || 'Failed to upload media');
     }
-
-    return response.json();
   },
 
   async deleteMedia(fileUrl: string): Promise<void> {
