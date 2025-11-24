@@ -1,4 +1,5 @@
 import { User, ChatRoom, Message, CreateUserDto, CreateChatRoomDto } from '@/types/chat';
+import { Post, Comment, CreatePostDto, CreateCommentDto } from '@/types/feed';
 import { API_BASE_URL } from './config';
 
 const API_URL = `${API_BASE_URL}/api`;
@@ -85,5 +86,130 @@ export const api = {
   async getMessageById(id: string): Promise<Message> {
     const response = await fetch(`${API_URL}/messages/${id}`);
     return response.json();
+  },
+
+  // Posts
+  async getPosts(userId?: string, skip = 0, limit = 20): Promise<Post[]> {
+    const params = new URLSearchParams();
+    if (userId) params.append('userId', userId);
+    params.append('skip', skip.toString());
+    params.append('limit', limit.toString());
+
+    const response = await fetch(`${API_URL}/posts?${params}`);
+    if (!response.ok) {
+      console.error('Failed to fetch posts');
+      return [];
+    }
+    return response.json();
+  },
+
+  async getPostById(id: string, userId?: string): Promise<Post | null> {
+    const params = userId ? `?userId=${userId}` : '';
+    const response = await fetch(`${API_URL}/posts/${id}${params}`);
+    if (!response.ok) {
+      return null;
+    }
+    return response.json();
+  },
+
+  async getUserPosts(userId: string, currentUserId?: string, skip = 0, limit = 20): Promise<Post[]> {
+    const params = new URLSearchParams();
+    if (currentUserId) params.append('currentUserId', currentUserId);
+    params.append('skip', skip.toString());
+    params.append('limit', limit.toString());
+
+    const response = await fetch(`${API_URL}/posts/user/${userId}?${params}`);
+    if (!response.ok) {
+      console.error('Failed to fetch user posts');
+      return [];
+    }
+    return response.json();
+  },
+
+  async createPost(userId: string, post: CreatePostDto): Promise<Post> {
+    const response = await fetch(`${API_URL}/posts?userId=${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(post),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create post: ${error}`);
+    }
+    return response.json();
+  },
+
+  async togglePostLike(postId: string, userId: string): Promise<{ isLiked: boolean; likesCount: number }> {
+    const response = await fetch(`${API_URL}/posts/${postId}/like?userId=${userId}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to toggle like');
+    }
+    return response.json();
+  },
+
+  async deletePost(postId: string): Promise<void> {
+    const response = await fetch(`${API_URL}/posts/${postId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete post');
+    }
+  },
+
+  // Comments
+  async getPostComments(postId: string, userId?: string, skip = 0, limit = 3): Promise<Comment[]> {
+    const params = new URLSearchParams();
+    if (userId) params.append('userId', userId);
+    params.append('skip', skip.toString());
+    params.append('limit', limit.toString());
+
+    const response = await fetch(`${API_URL}/comments/post/${postId}?${params}`);
+    if (!response.ok) {
+      console.error('Failed to fetch comments');
+      return [];
+    }
+    return response.json();
+  },
+
+  async getPostCommentsCount(postId: string): Promise<number> {
+    const response = await fetch(`${API_URL}/comments/post/${postId}/count`);
+    if (!response.ok) {
+      return 0;
+    }
+    return response.json();
+  },
+
+  async createComment(userId: string, comment: CreateCommentDto): Promise<Comment> {
+    const response = await fetch(`${API_URL}/comments?userId=${userId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(comment),
+    });
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to create comment: ${error}`);
+    }
+    return response.json();
+  },
+
+  async toggleCommentLike(commentId: string, userId: string): Promise<{ isLiked: boolean; likesCount: number }> {
+    const response = await fetch(`${API_URL}/comments/${commentId}/like?userId=${userId}`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to toggle comment like');
+    }
+    return response.json();
+  },
+
+  async deleteComment(commentId: string): Promise<void> {
+    const response = await fetch(`${API_URL}/comments/${commentId}`, {
+      method: 'DELETE',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to delete comment');
+    }
   },
 };

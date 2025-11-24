@@ -3,13 +3,18 @@
 import React, { useState, useEffect } from 'react';
 import { LoginForm } from '@/components/LoginForm';
 import { RegisterForm } from '@/components/RegisterForm';
-import { ChatRoomList } from '@/components/ChatRoomList';
-import { ChatWindow } from '@/components/ChatWindow';
 import { UserList } from '@/components/UserList';
 import { ChatPopup, DirectChatMessage } from '@/components/ChatPopup';
-import { User, ChatRoom, Message } from '@/types/chat';
+import { SidebarMenu } from '@/components/SidebarMenu';
+import { PostCreator } from '@/components/PostCreator';
+import { FeedCard } from '@/components/FeedCard';
+import { User } from '@/types/chat';
+import { Post, Comment, CreatePostDto, CreateCommentDto, PostType } from '@/types/feed';
 import { api } from '@/lib/api';
 import { chatHub } from '@/lib/signalr';
+import { FeedHubConnection } from '@/lib/feedHub';
+
+const feedHub = new FeedHubConnection();
 
 interface OpenChat {
   user: User;
@@ -17,36 +22,48 @@ interface OpenChat {
   messages: DirectChatMessage[];
 }
 
+interface PostWithComments {
+  post: Post;
+  comments: Comment[];
+  commentsLoaded: number;
+}
+
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [users, setUsers] = useState<User[]>([]);
-  const [chatRooms, setChatRooms] = useState<ChatRoom[]>([]);
-  const [selectedRoomId, setSelectedRoomId] = useState<string | undefined>();
-  const [messages, setMessages] = useState<Message[]>([]);
-  const [typingUsers, setTypingUsers] = useState<string[]>([]);
   const [showRegister, setShowRegister] = useState(false);
   const [openChats, setOpenChats] = useState<OpenChat[]>([]);
+
+  // Feed state
+  const [posts, setPosts] = useState<PostWithComments[]>([]);
+  const [isLoadingPosts, setIsLoadingPosts] = useState(false);
 
   useEffect(() => {
     if (currentUser) {
       loadInitialData();
       setupSignalR();
+      setupFeedHub();
     }
   }, [currentUser]);
 
   const loadInitialData = async () => {
     try {
-      const [roomsData, usersData] = await Promise.all([
-        api.getChatRooms(),
+      const [usersData, postsData] = await Promise.all([
         api.getOnlineUsers(),
+        api.getPosts(currentUser?.id),
       ]);
 
-      setChatRooms(roomsData);
       setUsers(usersData);
 
-      if (roomsData.length > 0 && !selectedRoomId) {
-        handleRoomSelect(roomsData[0].id);
-      }
+      const postsWithComments: PostWithComments[] = await Promise.all(
+        postsData.map(async (post) => ({
+          post,
+          comments: await api.getPostComments(post.id, currentUser?.id, 0, 3),
+          commentsLoaded: 3,
+        }))
+      );
+
+      setPosts(postsWithComments);
     } catch (error) {
       console.error('Error loading data:', error);
     }
@@ -57,12 +74,6 @@ export default function Home() {
 
     try {
       await chatHub.start(currentUser.id);
-
-      chatHub.onReceiveMessage((message: Message) => {
-        if (message.chatRoomId === selectedRoomId) {
-          setMessages((prev) => [...prev, message]);
-        }
-      });
 
       chatHub.onUserOnline(async (userId: string) => {
         const user = await api.getUserById(userId);
@@ -78,24 +89,6 @@ export default function Home() {
         );
       });
 
-      chatHub.onUserTyping((userName: string, roomId: string) => {
-        if (roomId === selectedRoomId) {
-          setTypingUsers((prev) => {
-            if (!prev.includes(userName)) {
-              return [...prev, userName];
-            }
-            return prev;
-          });
-        }
-      });
-
-      chatHub.onUserStoppedTyping((userName: string, roomId: string) => {
-        if (roomId === selectedRoomId) {
-          setTypingUsers((prev) => prev.filter((name) => name !== userName));
-        }
-      });
-
-      // Handle direct messages
       chatHub.onReceiveDirectMessage(async (directMessage: any) => {
         console.log('✉️ Received direct message:', directMessage);
         const formattedMessage: DirectChatMessage = {
@@ -111,33 +104,27 @@ export default function Home() {
           const existingChat = prev.find((chat) => chat.user.id === directMessage.senderId);
 
           if (existingChat) {
-            // Update existing chat with new message
-            console.log('📝 Adding message to existing chat with', directMessage.senderName);
             return prev.map((chat) =>
               chat.user.id === directMessage.senderId
                 ? { ...chat, messages: [...chat.messages, formattedMessage], isMinimized: false }
                 : chat
             );
           } else {
-            // Chat doesn't exist, need to fetch user and create new chat
-            console.log('🆕 Creating new chat window for', directMessage.senderName);
             api.getUserById(directMessage.senderId).then((user) => {
               setOpenChats((prevChats) => {
-                // Limit to 3 popups - remove oldest if needed
                 let updatedChats = [...prevChats];
                 if (updatedChats.length >= 3) {
-                  updatedChats = updatedChats.slice(-2); // Keep last 2
+                  updatedChats = updatedChats.slice(-2);
                 }
                 return [...updatedChats, { user, isMinimized: false, messages: [formattedMessage] }];
               });
             });
-            return prev; // Return unchanged for now, will be updated by async call above
+            return prev;
           }
         });
       });
 
       chatHub.onDirectMessageSent((directMessage: any) => {
-        console.log('✅ Direct message sent confirmation:', directMessage);
         const formattedMessage: DirectChatMessage = {
           id: directMessage.id,
           senderId: directMessage.senderId,
@@ -153,7 +140,6 @@ export default function Home() {
               ? { ...chat, messages: [...chat.messages, formattedMessage] }
               : chat
           );
-          console.log('📤 Message added to sender\'s chat window');
           return updatedChats;
         });
       });
@@ -162,16 +148,80 @@ export default function Home() {
     }
   };
 
+  const setupFeedHub = async () => {
+    try {
+      await feedHub.start();
+      console.log('FeedHub connected');
+
+      feedHub.onNewPost(async (newPost: Post) => {
+        console.log('New post received:', newPost);
+        const comments = await api.getPostComments(newPost.id, currentUser?.id, 0, 3);
+        setPosts((prev) => [{ post: newPost, comments, commentsLoaded: 3 }, ...prev]);
+      });
+
+      feedHub.onNewComment((newComment: Comment) => {
+        console.log('New comment received:', newComment);
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.post.id === newComment.postId
+              ? {
+                  ...p,
+                  post: { ...p.post, commentsCount: p.post.commentsCount + 1 },
+                  comments: [newComment, ...p.comments].slice(0, p.commentsLoaded),
+                }
+              : p
+          )
+        );
+      });
+
+      feedHub.onPostLikeUpdated((data) => {
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.post.id === data.postId
+              ? {
+                  ...p,
+                  post: {
+                    ...p.post,
+                    likesCount: data.likesCount,
+                    isLikedByCurrentUser: data.userId === currentUser?.id ? data.isLiked : p.post.isLikedByCurrentUser,
+                  },
+                }
+              : p
+          )
+        );
+      });
+
+      feedHub.onCommentLikeUpdated((data) => {
+        setPosts((prev) =>
+          prev.map((p) => ({
+            ...p,
+            comments: p.comments.map((c) =>
+              c.id === data.commentId
+                ? {
+                    ...c,
+                    likesCount: data.likesCount,
+                    isLikedByCurrentUser: data.userId === currentUser?.id ? data.isLiked : c.isLikedByCurrentUser,
+                  }
+                : c
+            ),
+          }))
+        );
+      });
+
+      feedHub.onPostDeleted((postId) => {
+        setPosts((prev) => prev.filter((p) => p.post.id !== postId));
+      });
+    } catch (error) {
+      console.error('Error setting up FeedHub:', error);
+    }
+  };
+
   const handleLogin = async (username: string) => {
     try {
-      // Check if user exists
       const user = await api.getUserByUsername(username);
-
       if (!user) {
         throw new Error('User not found. Please sign up first.');
       }
-
-      console.log('User logged in:', user);
       setCurrentUser(user);
     } catch (error: any) {
       console.error('Error logging in:', error);
@@ -181,86 +231,99 @@ export default function Home() {
 
   const handleRegister = async (username: string, displayName: string) => {
     try {
-      // Check if username already exists
       const existingUser = await api.getUserByUsername(username);
-
       if (existingUser) {
         throw new Error('Username already taken. Please choose another.');
       }
-
-      // Create new user
-      console.log('Creating new user:', { username, displayName });
       const user = await api.createUser({ username, displayName });
-      console.log('User created successfully:', user);
-
-      // Redirect to login page after successful registration
       setShowRegister(false);
-      return user; // Return success
+      return user;
     } catch (error: any) {
       console.error('Error registering:', error);
       throw error;
     }
   };
 
-  const handleRoomSelect = async (roomId: string) => {
-    setSelectedRoomId(roomId);
-    setMessages([]);
-    setTypingUsers([]);
-
+  const handleCreatePost = async (createPostDto: CreatePostDto) => {
+    if (!currentUser) return;
     try {
-      const roomMessages = await api.getRoomMessages(roomId);
-      setMessages(roomMessages.reverse());
-
-      await chatHub.joinRoom(roomId);
+      await api.createPost(currentUser.id, createPostDto);
     } catch (error) {
-      console.error('Error loading room messages:', error);
+      console.error('Error creating post:', error);
     }
   };
 
-  const handleSendMessage = async (content: string) => {
-    if (!selectedRoomId) return;
-
+  const handleTogglePostLike = async (postId: string) => {
+    if (!currentUser) return;
     try {
-      await chatHub.sendMessage(selectedRoomId, content);
+      await api.togglePostLike(postId, currentUser.id);
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error('Error toggling post like:', error);
     }
   };
 
-  const handleTyping = () => {
-    if (selectedRoomId) {
-      chatHub.sendTyping(selectedRoomId);
+  const handleLoadMoreComments = async (postId: string) => {
+    if (!currentUser) return;
+    try {
+      const postWithComments = posts.find((p) => p.post.id === postId);
+      if (!postWithComments) return;
+
+      const skip = postWithComments.commentsLoaded;
+      const newComments = await api.getPostComments(postId, currentUser.id, skip, 3);
+
+      setPosts((prev) =>
+        prev.map((p) =>
+          p.post.id === postId
+            ? {
+                ...p,
+                comments: [...p.comments, ...newComments],
+                commentsLoaded: p.commentsLoaded + 3,
+              }
+            : p
+        )
+      );
+    } catch (error) {
+      console.error('Error loading more comments:', error);
     }
   };
 
-  const handleStoppedTyping = () => {
-    if (selectedRoomId) {
-      chatHub.sendStoppedTyping(selectedRoomId);
+  const handleAddComment = async (postId: string, content: string) => {
+    if (!currentUser) return;
+    try {
+      await api.createComment(currentUser.id, { postId, content });
+    } catch (error) {
+      console.error('Error adding comment:', error);
     }
+  };
+
+  const handleToggleCommentLike = async (commentId: string) => {
+    if (!currentUser) return;
+    try {
+      await api.toggleCommentLike(commentId, currentUser.id);
+    } catch (error) {
+      console.error('Error toggling comment like:', error);
+    }
+  };
+
+  const handleSharePost = (postId: string) => {
+    console.log('Share post:', postId);
+    alert('Share functionality coming soon!');
   };
 
   const handleUserClick = (user: User) => {
-    console.log('👤 User clicked:', user.displayName);
-    // Check if chat is already open
     const existingChat = openChats.find((chat) => chat.user.id === user.id);
 
     if (existingChat) {
-      // If minimized, un-minimize it
-      console.log('📖 Reopening existing chat with', user.displayName);
       setOpenChats((prev) =>
         prev.map((chat) =>
           chat.user.id === user.id ? { ...chat, isMinimized: false } : chat
         )
       );
     } else {
-      // Open new chat - limit to 3 popups
-      console.log('💬 Opening new chat with', user.displayName);
       setOpenChats((prev) => {
         let updatedChats = [...prev];
-        // If we already have 3 popups, remove the oldest one
         if (updatedChats.length >= 3) {
-          console.log('⚠️ Maximum 3 popups reached, removing oldest');
-          updatedChats = updatedChats.slice(-2); // Keep last 2
+          updatedChats = updatedChats.slice(-2);
         }
         return [...updatedChats, { user, isMinimized: false, messages: [] }];
       });
@@ -269,16 +332,9 @@ export default function Home() {
 
   const handleSendDirectMessage = async (recipientUserId: string, content: string) => {
     try {
-      console.log('📨 Sending direct message to user ID:', recipientUserId);
-      console.log('📨 Message content:', content);
-      console.log('📨 Current user ID:', currentUser?.id);
-      console.log('📨 SignalR connection state:', chatHub.getConnectionState());
-
       await chatHub.sendDirectMessage(recipientUserId, content);
-      console.log('✅ Message sent successfully via SignalR');
     } catch (error) {
-      console.error('❌ Error sending direct message:', error);
-      alert('Failed to send message. Please check the console for details.');
+      console.error('Error sending direct message:', error);
     }
   };
 
@@ -311,40 +367,42 @@ export default function Home() {
     );
   }
 
-  const selectedRoom = chatRooms.find((r) => r.id === selectedRoomId);
-
   return (
-    <div className="h-screen flex">
-      {/* Left Sidebar - Chat Rooms */}
-      <div className="w-80">
-        <ChatRoomList
-          rooms={chatRooms}
-          selectedRoomId={selectedRoomId}
-          onRoomSelect={handleRoomSelect}
-        />
+    <div className="h-screen flex bg-gray-100">
+      {/* Left Sidebar - Menu (2 cols) */}
+      <div className="w-64 flex-shrink-0">
+        <SidebarMenu currentUser={currentUser} />
       </div>
 
-      {/* Main Chat Area */}
-      <div className="flex-1">
-        {selectedRoom ? (
-          <ChatWindow
-            roomName={selectedRoom.name}
-            messages={messages}
-            currentUserId={currentUser.id}
-            onSendMessage={handleSendMessage}
-            onTyping={handleTyping}
-            onStoppedTyping={handleStoppedTyping}
-            typingUsers={typingUsers}
-          />
-        ) : (
-          <div className="flex items-center justify-center h-full bg-gray-50">
-            <p className="text-gray-500">Select a chat room to start messaging</p>
-          </div>
-        )}
+      {/* Center - Feed (6 cols equivalent) */}
+      <div className="flex-1 overflow-y-auto px-4 py-6">
+        <div className="max-w-2xl mx-auto">
+          <PostCreator currentUser={currentUser} onCreatePost={handleCreatePost} />
+
+          {posts.map(({ post, comments }) => (
+            <FeedCard
+              key={post.id}
+              post={post}
+              currentUserId={currentUser.id}
+              comments={comments}
+              onToggleLike={() => handleTogglePostLike(post.id)}
+              onLoadMoreComments={() => handleLoadMoreComments(post.id)}
+              onAddComment={(content) => handleAddComment(post.id, content)}
+              onToggleCommentLike={handleToggleCommentLike}
+              onShare={() => handleSharePost(post.id)}
+            />
+          ))}
+
+          {posts.length === 0 && !isLoadingPosts && (
+            <div className="text-center py-12 text-gray-500">
+              <p>No posts yet. Create the first one!</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Right Sidebar - Users */}
-      <div className="w-80">
+      <div className="w-80 flex-shrink-0">
         <UserList
           users={users}
           currentUserId={currentUser.id}
