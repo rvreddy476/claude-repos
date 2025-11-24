@@ -6,7 +6,8 @@ public record UserDto(
     string DisplayName,
     string? AvatarUrl,
     bool IsOnline,
-    DateTime LastSeenAt
+    DateTime LastSeenAt,
+    string? ConnectionId
 );
 
 public record CreateUserDto(

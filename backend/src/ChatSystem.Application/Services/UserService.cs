@@ -101,6 +101,7 @@ public class UserService : IUserService
         user.DisplayName,
         user.AvatarUrl,
         user.IsOnline,
-        user.LastSeenAt
+        user.LastSeenAt,
+        user.ConnectionId
     );
 }
