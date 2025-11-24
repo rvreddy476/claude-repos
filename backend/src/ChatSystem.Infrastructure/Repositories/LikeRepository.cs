@@ -1,5 +1,6 @@
 using ChatSystem.Domain.Entities;
 using ChatSystem.Domain.Interfaces;
+using ChatSystem.Infrastructure.Persistence;
 using MongoDB.Driver;
 
 namespace ChatSystem.Infrastructure.Repositories;
@@ -7,10 +8,12 @@ namespace ChatSystem.Infrastructure.Repositories;
 public class LikeRepository : ILikeRepository
 {
     private readonly IMongoCollection<Like> _likes;
+    private readonly MongoDbContext _context;
 
-    public LikeRepository(IMongoDatabase database)
+    public LikeRepository(MongoDbContext context)
     {
-        _likes = database.GetCollection<Like>("Likes");
+        _context= context;
+        _likes = _context.Likes;
     }
 
     public async Task<Like?> GetByUserAndPostAsync(string userId, string postId)

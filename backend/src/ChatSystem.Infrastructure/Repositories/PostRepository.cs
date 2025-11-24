@@ -1,16 +1,19 @@
 using ChatSystem.Domain.Entities;
 using ChatSystem.Domain.Interfaces;
+using ChatSystem.Infrastructure.Persistence;
 using MongoDB.Driver;
 
 namespace ChatSystem.Infrastructure.Repositories;
 
 public class PostRepository : IPostRepository
 {
+    private readonly MongoDbContext _context;
     private readonly IMongoCollection<Post> _posts;
 
-    public PostRepository(IMongoDatabase database)
+    public PostRepository(MongoDbContext context)
     {
-        _posts = database.GetCollection<Post>("Posts");
+        _context = context;
+        _posts = _context.Posts;
     }
 
     public async Task<Post?> GetByIdAsync(string id)

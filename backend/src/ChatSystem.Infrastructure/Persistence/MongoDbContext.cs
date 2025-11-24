@@ -2,6 +2,7 @@ using ChatSystem.Domain.Entities;
 using ChatSystem.Infrastructure.Configuration;
 using Microsoft.Extensions.Options;
 using MongoDB.Driver;
+using System.Xml.Linq;
 
 namespace ChatSystem.Infrastructure.Persistence;
 
@@ -23,4 +24,12 @@ public class MongoDbContext
 
     public IMongoCollection<Message> Messages =>
         _database.GetCollection<Message>("Messages");
+    public IMongoCollection<Comment> Comments =>
+        _database.GetCollection<Comment>("Comments");
+    public IMongoCollection<Post> Posts =>
+       _database.GetCollection<Post>("Posts");
+
+    public IMongoCollection<Like> Likes => 
+        _database.GetCollection<Like>("Likes");
+
 }

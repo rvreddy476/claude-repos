@@ -109,13 +109,13 @@ public class GoogleCloudStorageService : IMediaStorageService
     {
         try
         {
-            var expiration = DateTimeOffset.UtcNow.AddMinutes(expirationMinutes);
-
-            var signedUrl = await _storageClient.SignAsync(
+          
+            var urlSigner = UrlSigner.FromCredentialFile(_settings.CredentialsPath);
+            var signedUrl = urlSigner.Sign(
                 bucket: _settings.BucketName,
                 objectName: fileName,
-                duration: TimeSpan.FromMinutes(expirationMinutes),
-                signingVersion: SigningVersion.V4
+                TimeSpan.FromMinutes(30),
+                 HttpMethod.Put
             );
 
             return signedUrl;

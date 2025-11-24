@@ -1,5 +1,6 @@
 using ChatSystem.Domain.Entities;
 using ChatSystem.Domain.Interfaces;
+using ChatSystem.Infrastructure.Persistence;
 using MongoDB.Driver;
 
 namespace ChatSystem.Infrastructure.Repositories;
@@ -7,10 +8,11 @@ namespace ChatSystem.Infrastructure.Repositories;
 public class CommentRepository : ICommentRepository
 {
     private readonly IMongoCollection<Comment> _comments;
-
-    public CommentRepository(IMongoDatabase database)
+    private readonly MongoDbContext _context;
+    public CommentRepository(MongoDbContext context)
     {
-        _comments = database.GetCollection<Comment>("Comments");
+        _context = context;
+        _comments = _context.Comments;
     }
 
     public async Task<Comment?> GetByIdAsync(string id)
