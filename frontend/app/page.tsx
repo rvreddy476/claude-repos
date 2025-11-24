@@ -96,8 +96,8 @@ export default function Home() {
       });
 
       // Handle direct messages
-      chatHub.onReceiveDirectMessage((directMessage: any) => {
-        console.log('Received direct message:', directMessage);
+      chatHub.onReceiveDirectMessage(async (directMessage: any) => {
+        console.log('✉️ Received direct message:', directMessage);
         const formattedMessage: DirectChatMessage = {
           id: directMessage.id,
           senderId: directMessage.senderId,
@@ -107,32 +107,37 @@ export default function Home() {
           timestamp: new Date(directMessage.timestamp),
         };
 
-        setOpenChats((prev) =>
-          prev.map((chat) =>
-            chat.user.id === directMessage.senderId
-              ? { ...chat, messages: [...chat.messages, formattedMessage] }
-              : chat
-          )
-        );
-
-        // Open chat window if not already open
         setOpenChats((prev) => {
           const existingChat = prev.find((chat) => chat.user.id === directMessage.senderId);
-          if (!existingChat) {
-            // Fetch user info and open chat
+
+          if (existingChat) {
+            // Update existing chat with new message
+            console.log('📝 Adding message to existing chat with', directMessage.senderName);
+            return prev.map((chat) =>
+              chat.user.id === directMessage.senderId
+                ? { ...chat, messages: [...chat.messages, formattedMessage], isMinimized: false }
+                : chat
+            );
+          } else {
+            // Chat doesn't exist, need to fetch user and create new chat
+            console.log('🆕 Creating new chat window for', directMessage.senderName);
             api.getUserById(directMessage.senderId).then((user) => {
-              setOpenChats((prevChats) => [
-                ...prevChats,
-                { user, isMinimized: false, messages: [formattedMessage] },
-              ]);
+              setOpenChats((prevChats) => {
+                // Limit to 3 popups - remove oldest if needed
+                let updatedChats = [...prevChats];
+                if (updatedChats.length >= 3) {
+                  updatedChats = updatedChats.slice(-2); // Keep last 2
+                }
+                return [...updatedChats, { user, isMinimized: false, messages: [formattedMessage] }];
+              });
             });
+            return prev; // Return unchanged for now, will be updated by async call above
           }
-          return prev;
         });
       });
 
       chatHub.onDirectMessageSent((directMessage: any) => {
-        console.log('Direct message sent confirmation:', directMessage);
+        console.log('✅ Direct message sent confirmation:', directMessage);
         const formattedMessage: DirectChatMessage = {
           id: directMessage.id,
           senderId: directMessage.senderId,
@@ -142,13 +147,15 @@ export default function Home() {
           timestamp: new Date(directMessage.timestamp),
         };
 
-        setOpenChats((prev) =>
-          prev.map((chat) =>
+        setOpenChats((prev) => {
+          const updatedChats = prev.map((chat) =>
             chat.user.id === directMessage.recipientId
               ? { ...chat, messages: [...chat.messages, formattedMessage] }
               : chat
-          )
-        );
+          );
+          console.log('📤 Message added to sender\'s chat window');
+          return updatedChats;
+        });
       });
     } catch (error) {
       console.error('Error setting up SignalR:', error);
@@ -233,28 +240,45 @@ export default function Home() {
   };
 
   const handleUserClick = (user: User) => {
+    console.log('👤 User clicked:', user.displayName);
     // Check if chat is already open
     const existingChat = openChats.find((chat) => chat.user.id === user.id);
 
     if (existingChat) {
       // If minimized, un-minimize it
+      console.log('📖 Reopening existing chat with', user.displayName);
       setOpenChats((prev) =>
         prev.map((chat) =>
           chat.user.id === user.id ? { ...chat, isMinimized: false } : chat
         )
       );
     } else {
-      // Open new chat
-      setOpenChats((prev) => [...prev, { user, isMinimized: false, messages: [] }]);
+      // Open new chat - limit to 3 popups
+      console.log('💬 Opening new chat with', user.displayName);
+      setOpenChats((prev) => {
+        let updatedChats = [...prev];
+        // If we already have 3 popups, remove the oldest one
+        if (updatedChats.length >= 3) {
+          console.log('⚠️ Maximum 3 popups reached, removing oldest');
+          updatedChats = updatedChats.slice(-2); // Keep last 2
+        }
+        return [...updatedChats, { user, isMinimized: false, messages: [] }];
+      });
     }
   };
 
   const handleSendDirectMessage = async (recipientUserId: string, content: string) => {
     try {
-      console.log('Main page: Sending direct message to', recipientUserId, ':', content);
+      console.log('📨 Sending direct message to user ID:', recipientUserId);
+      console.log('📨 Message content:', content);
+      console.log('📨 Current user ID:', currentUser?.id);
+      console.log('📨 SignalR connection state:', chatHub.getConnectionState());
+
       await chatHub.sendDirectMessage(recipientUserId, content);
+      console.log('✅ Message sent successfully via SignalR');
     } catch (error) {
-      console.error('Error sending direct message:', error);
+      console.error('❌ Error sending direct message:', error);
+      alert('Failed to send message. Please check the console for details.');
     }
   };
 

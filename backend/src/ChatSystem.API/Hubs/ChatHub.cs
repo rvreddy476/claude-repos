@@ -112,16 +112,27 @@ public class ChatHub : Hub
 
     public async Task SendDirectMessage(string recipientUserId, string content)
     {
+        Console.WriteLine($"📨 SendDirectMessage called - Recipient: {recipientUserId}, Content: {content}");
+
         var senderId = Context.GetHttpContext()?.Request.Query["userId"].ToString();
+        Console.WriteLine($"📨 Sender ID from context: {senderId}");
 
         if (string.IsNullOrEmpty(senderId))
+        {
+            Console.WriteLine("❌ Sender ID is empty!");
             return;
+        }
 
         var sender = await _userService.GetUserByIdAsync(senderId);
         var recipient = await _userService.GetUserByIdAsync(recipientUserId);
 
+        Console.WriteLine($"📨 Sender: {sender?.DisplayName ?? "null"}, Recipient: {recipient?.DisplayName ?? "null"}");
+
         if (sender == null || recipient == null)
+        {
+            Console.WriteLine("❌ Sender or recipient not found!");
             return;
+        }
 
         var directMessage = new
         {
@@ -133,13 +144,22 @@ public class ChatHub : Hub
             Timestamp = DateTime.UtcNow
         };
 
+        Console.WriteLine($"📨 Message object created: {directMessage.Id}");
+
         // Send to recipient if they're online
         if (!string.IsNullOrEmpty(recipient.ConnectionId))
         {
+            Console.WriteLine($"✅ Sending to recipient connection: {recipient.ConnectionId}");
             await Clients.Client(recipient.ConnectionId).SendAsync("ReceiveDirectMessage", directMessage);
+        }
+        else
+        {
+            Console.WriteLine($"⚠️ Recipient {recipient.DisplayName} has no connection ID (offline?)");
         }
 
         // Send confirmation back to sender
+        Console.WriteLine($"✅ Sending confirmation to sender");
         await Clients.Caller.SendAsync("DirectMessageSent", directMessage);
+        Console.WriteLine($"✅ Direct message process completed");
     }
 }
